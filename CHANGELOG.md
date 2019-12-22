@@ -1,5 +1,24 @@
 # Change Log
 
+## [2.4.0](https://github.com/auth0/JWTDecode.swift/tree/2.4.0) (2019-11-27)
+[Full Changelog](https://github.com/auth0/JWTDecode.swift/compare/2.3.1...2.4.0)
+
+**Added**
+- Added Swift Package Manager Support [SDK-1181] [\#97](https://github.com/auth0/JWTDecode.swift/pull/97) ([Widcket](https://github.com/Widcket))
+- Added watchOS support [\#91](https://github.com/auth0/JWTDecode.swift/pull/91) ([jklp](https://github.com/jklp))
+
+## [2.3.1](https://github.com/auth0/JWTDecode.swift/tree/2.3.1) (2019-09-24)
+[Full Changelog](https://github.com/auth0/JWTDecode.swift/compare/2.3.0...2.3.1)
+
+**Added**
+- Multiple Swift version support in CocoaPods [\#94](https://github.com/auth0/JWTDecode.swift/pull/94) ([ericbuehl](https://github.com/ericbuehl))
+
+## [2.3.0](https://github.com/auth0/JWTDecode.swift/tree/2.3.0) (2019-05-06)
+[Full Changelog](https://github.com/auth0/JWTDecode.swift/compare/2.2.0...2.3.0)
+
+**Added**
+- Added Swift 5 / Xcode 10.2 support [\#88](https://github.com/auth0/JWTDecode.swift/pull/88) ([cocojoe](https://github.com/cocojoe))
+
 ## [2.2.0](https://github.com/auth0/JWTDecode.swift/tree/2.2.0) (2018-12-17)
 [Full Changelog](https://github.com/auth0/JWTDecode.swift/compare/2.1.1...2.2.0)
 
