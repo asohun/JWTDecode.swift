@@ -1,227 +1,113 @@
-version: 2
+version: 2.1
+
+executors:
+  job-environment:
+    shell: /bin/bash --login -eo pipefail
+    environment:
+      LC_ALL: en_US.UTF-8
+      LANG: en_US.UTF-8
+      BUNDLE_JOBS: 4
+      BUNDLE_RETRY: 3
+      BUNDLE_PATH: vendor/bundle
+      HOMEBREW_LOGS: ~/homebrew-logs
+      HOMEBREW_TEMP: ~/homebrew-temp
+      HOMEBREW_NO_AUTO_UPDATE: 1
+      HOMEBREW_NO_INSTALL_CLEANUP: 1
+      FL_OUTPUT_DIR: output
+
+commands:
+  prepare:
+    parameters:
+      ruby:
+        type: string
+        default: "2.7.1p83"
+      xcode:
+        type: string
+        default: "11.7.0"
+    steps:
+      - restore_cache:
+          keys:
+          - jwtdecode-swift-gems-{{ checksum "Gemfile.lock" }}
+          - jwtdecode-swift-gems-
+      - run: |
+          echo "ruby-<< parameters.ruby >>" > ~/.ruby-version
+          bundle check || bundle install --without=development
+      - save_cache:
+          key: jwtdecode-swift-gems-{{ checksum "Gemfile.lock" }}
+          paths:
+            - vendor/bundle
+      - run: |
+          brew install swiftlint
+          grep -lR "shouldUseLaunchSchemeArgsEnv" *.* --null | xargs -0 sed -i '' -e 's/shouldUseLaunchSchemeArgsEnv = "YES"/shouldUseLaunchSchemeArgsEnv = "YES" codeCoverageEnabled = "YES"/g'
+      - restore_cache:
+          keys:
+            - jwtdecode-swift-carthage-{ checksum "Cartfile.resolved" }}-<< parameters.xcode >>
+            - jwtdecode-swift-carthage-{ checksum "Cartfile.resolved" }}
+            - jwtdecode-swift-carthage-
+      - run: carthage bootstrap --no-use-binaries --cache-builds
+      - save_cache:
+          key: jwtdecode-swift-carthage-{ checksum "Cartfile.resolved" }}-<< parameters.xcode >>
+          paths:
+            - Carthage/Build
+  test-ios:
+    steps: 
+      - run: bundle exec fastlane ios ci
+  pod-lint:
+    steps:
+      - run: bundle exec fastlane ios pod_lint
+  send-coverage-report:
+    steps:
+      - run: bash <(curl -s https://codecov.io/bash) -J 'JWTDecode'
+  test-macos:
+    steps: 
+      - run: |
+          security create-keychain -p circle cikeychain
+          security list-keychains -d user -s "/Users/distiller/Library/Keychains/xcode.keychain-db" /Users/distiller/Library/Keychains/cikeychain-db
+          security default-keychain -s /Users/distiller/Library/Keychains/cikeychain-db
+          security unlock-keychain -p circle "/Users/distiller/Library/Keychains/cikeychain-db"
+          xcodebuild test -scheme JWTDecode-OSX -destination 'platform=macOS,arch=x86_64' | xcpretty
+          swift test
+  test-tvos:
+    steps: 
+      - run: xcodebuild test -scheme JWTDecode-tvOS -destination 'platform=tvOS Simulator,name=Apple TV' | xcpretty
+
 jobs:
-  build-iOS-Swift-5.0:
-    macos:
-      xcode: "10.2.0"
+  build-and-test-iOS-swift-5_2:
+    executor: job-environment
     environment:
-          LC_ALL: en_US.UTF-8
-          LANG: en_US.UTF-8
-          HOMEBREW_LOGS: ~/homebrew-logs
-          HOMEBREW_TEMP: ~/homebrew-temp
-          HOMEBREW_NO_AUTO_UPDATE: 1
+      FASTLANE_EXPLICIT_OPEN_SIMULATOR: 2
+    macos:
+      xcode: 11.7.0
     steps:
       - checkout
-      - run: |
-          brew install swiftlint
-          bundle install --without=development
-          grep -lR "shouldUseLaunchSchemeArgsEnv" *.* --null | xargs -0 sed -i '' -e 's/shouldUseLaunchSchemeArgsEnv = "YES"/shouldUseLaunchSchemeArgsEnv = "YES" codeCoverageEnabled = "YES"/g'
-      - run:
-          name: Bootstrap
-          command: bundle exec fastlane ios bootstrap
-      - run:
-          name: Run test suite
-          command: bundle exec fastlane ios ci
-          environment:
-            SCHEME: JWTDecode-iOS
-            DEVICE: iPhone 8
-            FASTLANE_EXPLICIT_OPEN_SIMULATOR: 2
-      - run: |
-          bash <(curl -s https://codecov.io/bash) -J 'JWTDecode'
-      - save_cache:
-          key: dependency-cache
-          paths:
-            - Carthage/Build
+      - prepare
+      - test-ios
+      - send-coverage-report
+      - pod-lint
       - store_test_results:
-          path: fastlane/test_output
-  build-iOS-Swift-4.2:
+          path: output/scan
+      - store_artifacts:
+          path: output
+  build-and-test-macOS-swift-5_2:
+    executor: job-environment
     macos:
-      xcode: "10.2.0"
-    environment:
-          LC_ALL: en_US.UTF-8
-          LANG: en_US.UTF-8
-          HOMEBREW_LOGS: ~/homebrew-logs
-          HOMEBREW_TEMP: ~/homebrew-temp
-          HOMEBREW_NO_AUTO_UPDATE: 1
+      xcode: 11.7.0
     steps:
       - checkout
-      - run: |
-          brew install swiftlint
-          bundle install --without=development
-          grep -lR "shouldUseLaunchSchemeArgsEnv" *.* --null | xargs -0 sed -i '' -e 's/shouldUseLaunchSchemeArgsEnv = "YES"/shouldUseLaunchSchemeArgsEnv = "YES" codeCoverageEnabled = "YES"/g'
-          sed -i "" 's/SWIFT_VERSION = 5.0/SWIFT_VERSION = 4.2/g' "JWTDecode.xcodeproj/project.pbxproj"
-      - run:
-          name: Bootstrap
-          command: bundle exec fastlane ios bootstrap
-      - run:
-          name: Run test suite
-          command: bundle exec fastlane ios ci
-          environment:
-            SCHEME: JWTDecode-iOS
-            DEVICE: iPhone 8
-            FASTLANE_EXPLICIT_OPEN_SIMULATOR: 2
-      - run: |
-          bash <(curl -s https://codecov.io/bash) -J 'JWTDecode'
-      - save_cache:
-          key: dependency-cache
-          paths:
-            - Carthage/Build
-      - store_test_results:
-          path: fastlane/test_output
-  build-iOS-Swift-4.0:
+      - prepare
+      - test-macos
+  build-and-test-tvOS-swift-5_2:
+    executor: job-environment
     macos:
-      xcode: "10.2.0"
-    environment:
-          LC_ALL: en_US.UTF-8
-          LANG: en_US.UTF-8
-          HOMEBREW_LOGS: ~/homebrew-logs
-          HOMEBREW_TEMP: ~/homebrew-temp
-          HOMEBREW_NO_AUTO_UPDATE: 1
+      xcode: 11.7.0
     steps:
       - checkout
-      - run: |
-          brew install swiftlint
-          bundle install --without=development
-          grep -lR "shouldUseLaunchSchemeArgsEnv" *.* --null | xargs -0 sed -i '' -e 's/shouldUseLaunchSchemeArgsEnv = "YES"/shouldUseLaunchSchemeArgsEnv = "YES" codeCoverageEnabled = "YES"/g'
-          sed -i "" 's/SWIFT_VERSION = 5.0/SWIFT_VERSION = 4.0/g' "JWTDecode.xcodeproj/project.pbxproj"
-      - run:
-          name: Bootstrap
-          command: bundle exec fastlane ios bootstrap
-      - run:
-          name: Run test suite
-          command: bundle exec fastlane ios ci
-          environment:
-            SCHEME: JWTDecode-iOS
-            DEVICE: iPhone 8
-            FASTLANE_EXPLICIT_OPEN_SIMULATOR: 2
-      - save_cache:
-          key: dependency-cache
-          paths:
-            - Carthage/Build
-  build-macOS-Swift-5.0:
-    macos:
-      xcode: "10.2.0"
-    environment:
-          LC_ALL: en_US.UTF-8
-          LANG: en_US.UTF-8
-          HOMEBREW_LOGS: ~/homebrew-logs
-          HOMEBREW_TEMP: ~/homebrew-temp
-          HOMEBREW_NO_AUTO_UPDATE: 1
-    steps:
-      - checkout
-      - run: |
-          brew install swiftlint
-          bundle install --without=development
-          grep -lR "shouldUseLaunchSchemeArgsEnv" *.* --null | xargs -0 sed -i '' -e 's/shouldUseLaunchSchemeArgsEnv = "YES"/shouldUseLaunchSchemeArgsEnv = "YES" codeCoverageEnabled = "YES"/g'
-      - run:
-          name: Bootstrap
-          command: carthage bootstrap --platform mac
-      - run: 
-          name: Setup Keychain
-          command: |
-            security create-keychain -p circle cikeychain
-            security list-keychains -d user -s "/Users/distiller/Library/Keychains/xcode.keychain-db" /Users/distiller/Library/Keychains/cikeychain-db
-            security default-keychain -s /Users/distiller/Library/Keychains/cikeychain-db
-            security unlock-keychain -p circle "/Users/distiller/Library/Keychains/cikeychain-db"
-      - run:
-          name: Run test suite
-          command: xcodebuild test -scheme JWTDecode-OSX -destination 'platform=macOS,arch=x86_64' | xcpretty
-      - save_cache:
-          key: dependency-cache
-          paths:
-            - Carthage/Build
-  build-macOS-Swift-4.2:
-    macos:
-      xcode: "10.2.0"
-    environment:
-          LC_ALL: en_US.UTF-8
-          LANG: en_US.UTF-8
-          HOMEBREW_LOGS: ~/homebrew-logs
-          HOMEBREW_TEMP: ~/homebrew-temp
-          HOMEBREW_NO_AUTO_UPDATE: 1
-    steps:
-      - checkout
-      - run: |
-          brew install swiftlint
-          bundle install --without=development
-          grep -lR "shouldUseLaunchSchemeArgsEnv" *.* --null | xargs -0 sed -i '' -e 's/shouldUseLaunchSchemeArgsEnv = "YES"/shouldUseLaunchSchemeArgsEnv = "YES" codeCoverageEnabled = "YES"/g'
-          sed -i "" 's/SWIFT_VERSION = 5.0/SWIFT_VERSION = 4.2/g' "JWTDecode.xcodeproj/project.pbxproj"
-      - run:
-          name: Bootstrap
-          command: carthage bootstrap --platform mac
-      - run: 
-          name: Setup Keychain
-          command: |
-            security create-keychain -p circle cikeychain
-            security list-keychains -d user -s "/Users/distiller/Library/Keychains/xcode.keychain-db" /Users/distiller/Library/Keychains/cikeychain-db
-            security default-keychain -s /Users/distiller/Library/Keychains/cikeychain-db
-            security unlock-keychain -p circle "/Users/distiller/Library/Keychains/cikeychain-db"
-      - run:
-          name: Run test suite
-          command: xcodebuild test -scheme JWTDecode-OSX -destination 'platform=macOS,arch=x86_64' | xcpretty
-      - save_cache:
-          key: dependency-cache
-          paths:
-            - Carthage/Build
-  build-tvOS-Swift-5.0:
-    macos:
-      xcode: "10.2.0"
-    environment:
-          LC_ALL: en_US.UTF-8
-          LANG: en_US.UTF-8
-          HOMEBREW_LOGS: ~/homebrew-logs
-          HOMEBREW_TEMP: ~/homebrew-temp
-          HOMEBREW_NO_AUTO_UPDATE: 1
-    steps:
-      - checkout
-      - run: |
-          brew install swiftlint
-          bundle install --without=development
-          grep -lR "shouldUseLaunchSchemeArgsEnv" *.* --null | xargs -0 sed -i '' -e 's/shouldUseLaunchSchemeArgsEnv = "YES"/shouldUseLaunchSchemeArgsEnv = "YES" codeCoverageEnabled = "YES"/g'
-      - run:
-          name: Bootstrap
-          command: carthage bootstrap --platform tvOS
-      - run:
-          name: Run test suite
-          command: xcodebuild test -scheme JWTDecode-tvOS -destination 'platform=tvOS Simulator,name=Apple TV' | xcpretty
-      - save_cache:
-          key: dependency-cache
-          paths:
-            - Carthage/Build
-  build-tvOS-Swift-4.2:
-    macos:
-      xcode: "10.2.0"
-    environment:
-          LC_ALL: en_US.UTF-8
-          LANG: en_US.UTF-8
-          HOMEBREW_LOGS: ~/homebrew-logs
-          HOMEBREW_TEMP: ~/homebrew-temp
-          HOMEBREW_NO_AUTO_UPDATE: 1
-    steps:
-      - checkout
-      - run: |
-          brew install swiftlint
-          bundle install --without=development
-          grep -lR "shouldUseLaunchSchemeArgsEnv" *.* --null | xargs -0 sed -i '' -e 's/shouldUseLaunchSchemeArgsEnv = "YES"/shouldUseLaunchSchemeArgsEnv = "YES" codeCoverageEnabled = "YES"/g'
-          sed -i "" 's/SWIFT_VERSION = 5.0/SWIFT_VERSION = 4.2/g' "JWTDecode.xcodeproj/project.pbxproj"
-      - run:
-          name: Bootstrap
-          command: carthage bootstrap --platform tvOS
-      - run:
-          name: Run test suite
-          command: xcodebuild test -scheme JWTDecode-tvOS -destination 'platform=tvOS Simulator,name=Apple TV' | xcpretty
-      - save_cache:
-          key: dependency-cache
-          paths:
-            - Carthage/Build
+      - prepare
+      - test-tvos
 
 workflows:
-  version: 2
   build:
     jobs:
-      -  build-iOS-Swift-5.0
-      -  build-iOS-Swift-4.2
-      -  build-iOS-Swift-4.0
-      -  build-macOS-Swift-5.0
-      -  build-macOS-Swift-4.2
-      -  build-tvOS-Swift-5.0
-      -  build-tvOS-Swift-4.2
+      -  build-and-test-iOS-swift-5_2
+      -  build-and-test-macOS-swift-5_2
+      -  build-and-test-tvOS-swift-5_2
